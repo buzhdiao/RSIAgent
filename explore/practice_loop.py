@@ -1,3 +1,9 @@
+# 【中文注释·模块定位】Agent 自有的练习生命周期（DRS 的骨架模块，同时向 Phase 1
+# 波次与目标学习提供全部底层原语）。流程：持久 Curriculum → 一次全新 Actor 提交 →
+# 一次全新 Verifier 判定（PASS 或 FAIL）→ 同一 Actor 起草并把终态经验整合进持久
+# 记忆 → 持久 Curriculum 再次搜索。这里没有宿主评分、项目预检、奖励、基准评估器
+# 或宿主书写的成功标准——每次交接只携带一个小的词法传输令牌（token），
+# 一切语义决策都属于智能体（control split 的传输/语义二分）。
 """Agent-owned practice lifecycle.
 
 This module coordinates the current practice lifecycle:
@@ -51,6 +57,11 @@ from explore.provisioning import (
 from tools.exam_fence import audit_text, audit_transcripts
 
 
+# 【中文注释】客户机内路径哨兵与令牌约定（所有角色共用同一套"信封地址"）：
+# PROJECT_ROOT 是练习/波次项目的工作目录；CURRICULUM_HANDOFF/CURRICULUM_NOTES 是
+# Curriculum 的交接与笔记；ACTOR_HANDOFF/VERIFIER_REPORT/LEARNING_DIAGNOSIS 分别是
+# Actor 交接、Verifier 报告与学习诊断；ACTOR_EXECUTION_EVIDENCE（点前缀=Agent 私有）
+# 存放执行证据。DEFAULT_CORPUS 是宿主侧任务指令 8-gram 语料的默认位置（防泄漏审计）。
 PROJECT_ROOT_NAME = "evolution_project"
 PROJECT_ROOT = f"/home/user/{PROJECT_ROOT_NAME}"
 CURRICULUM_HANDOFF = "/home/user/project_next.md"
@@ -67,6 +78,10 @@ _ACTOR_EXECUTION_FILENAMES = frozenset({
 })
 _ACTOR_EXECUTION_MANIFEST = "SHA256SUMS"
 
+# 【中文注释】传输令牌（词法约束，不承载语义）：各角色的交接首行必须匹配其一。
+# Curriculum 的四种变体对应四种生命周期（通用/Phase1 波次/目标/统一循环），可选词
+# 各不相同；Actor 只有 SUBMIT；Verifier 只有 PASS|FAIL（练习判定二值）。令牌只证明
+# "格式可解析"，绝不等于语义判定本身。
 _CURRICULUM_TOKEN = re.compile(
     r"^DECISION: (PROJECT|CONVERGED|STALLED)$")
 _PHASE1_CURRICULUM_TOKEN = re.compile(
@@ -79,10 +94,12 @@ _ACTOR_TOKEN = re.compile(r"^STATUS: (SUBMIT)$")
 _VERIFIER_TOKEN = re.compile(r"^VERDICT: (PASS|FAIL)$")
 
 
+# 基础设施错误：传输、VM 边界或紧急看门狗阻止了"作出判定"（不计分、可恢复）。
 class PracticeInfrastructureError(RuntimeError):
     """A transport, VM boundary, or emergency watchdog prevented a ruling."""
 
 
+# 边界违规错误：目标泄漏遏制边界拒绝了某个 Agent 表面（如越权引用任务信息）。
 class PracticeBoundaryError(RuntimeError):
     """A target-leakage containment boundary rejected an Agent surface."""
 
@@ -317,6 +334,9 @@ def _read_memory_tree(path: str) -> dict[str, bytes]:
     return files
 
 
+# 【中文注释】_fsync_tree：把整棵树的文件与目录句柄强制刷盘（fsync）。
+# 先刷文件（rglob 排序保证确定性），再自底向上刷目录（reverse=True），
+# 最后刷根目录——这是"记忆提交持久化"的物理保障：断电后不丢页。
 def _fsync_tree(root: Path) -> None:
     for candidate in sorted(root.rglob("*")):
         if candidate.is_file():
@@ -337,6 +357,10 @@ def _fsync_tree(root: Path) -> None:
 
 
 def _atomic_install_memory(path: str, files: dict[str, bytes]) -> None:
+    # 【中文注释】原子安装完整记忆树（同文件系统 rename 恢复法）——记忆写入的
+    # 关键防线。流程：路径安全校验 → 暂存目录写全部文件并 fsync →
+    # os.replace(旧目录→备份) → os.replace(暂存→目标)；第二步失败则把备份换回去
+    # （记忆永不出现"半新半旧"状态），最后 fsync 父目录并清理备份。
     """Install a complete memory tree with same-filesystem rename recovery."""
 
     if any(not _safe_memory_name(name) for name in files):
@@ -1018,6 +1042,13 @@ def _outcome_text(record: dict[str, Any]) -> str:
 
 
 @dataclass
+# 【中文注释】PracticeHooks：生命周期全部外部能力的"依赖接缝"（dataclass 字段即
+# 钩子表，默认绑到真实实现）。分组解读：run_attempt/sink_factory/reset_vm 是执行与
+# 供给；read_guest_text/capture_project/replay_project/verify_project/audit_captured
+# 是材料在客户机与宿主间的搬运与校验；push_memory/pull_memory/audit_memory/
+# journal_memory/install_memory/validate_corpus 是记忆的推拉、静默审计、日志、原子
+# 安装与语料校验；audit_text/audit_transcripts 是目标边界审计；push_dir 是通用目录
+# 传输。恢复工具与测试可整体替换任意钩子做确定性回放（依赖倒置）。
 class PracticeHooks:
     """Dependency seams for deterministic lifecycle tests and recovery tools."""
 
@@ -1041,6 +1072,10 @@ class PracticeHooks:
     push_dir: Callable[..., bool] = memory_transport.push_dir
 
 
+# 【中文注释】Phase 1 断点恢复：只恢复"完全闭合"的项目边界。Agent 的工作从不在此
+# 被重建或重新评分——持久记忆、已完成的结果记录与最后一份无损 Curriculum 轨迹
+# 共同充当恢复证人。任何"打开中/半完成"的下一个 episode 一律 fail closed
+# （拒绝恢复），绝不靠猜蒙混过关（state.json 的 status 必须是 infra 且计数自洽）。
 def _resume_completed_phase1_boundary(
         lineage: Path, target_direction: str, *,
         project_budget: int | None, checkpoint_projects: tuple[int, ...],

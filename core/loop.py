@@ -1,3 +1,9 @@
+# 【中文注释·模块定位】RSIAgent 的尝试循环（attempt loop）——code as policy，
+# 以执行轨迹闭环。一次尝试 = 一段有界对话：模型反复提交"完整程序"（在 VM 中执行、
+# 完整轨迹回传），直到它以"自著、由任务指令导出的检查"声明 done，且这些检查必须在
+# 活环境中真正通过。密封评分器（sealed grader，Constraint #0）：本循环只接收一个
+# 指令字符串和一个 VM 句柄（run_script/run_command）；基准评分器在结构上不可达——
+# runner 只在本函数返回之后调用它一次。官方分数因此天然处于学习环之外。
 """The rsiagent attempt loop — code as policy, closed over execution traces.
 
 One attempt = a bounded conversation in which the model repeatedly submits a whole
@@ -465,6 +471,11 @@ def _actor_evidence_leads(accepted, results) -> str:
     return "\n\n".join(blocks)
 
 
+# 【中文注释】LoopResult：一次尝试的完整结果遥测（@dataclass 生成 __init__ 等）。
+# status：done/evolve/budget/safety_ceiling/stalled/infra；iters 是"被解析的动作
+# 回合"（程序+look+done），turns 是全部模型调用（含空转/被轻推的回合），两者之差
+# 即格式损耗。infra_pause_secs 把供应商停机从工作时钟剔除。surface_delta 在停滞
+# 退出时记录文件增量（""=可证明未改任何文件；None=未采样）——pivot 决策依据。
 @dataclass
 class LoopResult:
     status: str = "budget"      # done | evolve | budget | safety_ceiling | stalled | infra
@@ -488,6 +499,9 @@ class LoopResult:
     #                             file was created/modified; None = unknown/not taken)
 
 
+# 【中文注释】用户通道基础设施错误：ask_user 通道一旦接入，其失败就是环境/传输
+# 失败，不是"Actor 可以用猜测替代"的证据。抛出异常保持官方评估器密封，
+# 防止被基础设施损伤的候选拿到分数。
 class UserChannelInfrastructureError(RuntimeError):
     """A task-provided user-response channel failed to produce a response.
 
@@ -497,6 +511,10 @@ class UserChannelInfrastructureError(RuntimeError):
     """
 
 
+# 【中文注释】_call_with_transport_pause：语义级模型操作的"可恢复传输暂停"包装。
+# 供应商/API 异常不是助手消息——绝不伪造空回复。可恢复失败按机械延迟原样重试；
+# 调用方经 on_pause 把暂停时长从活动工作时钟扣除（嵌套调用也公平）；致命的
+# 请求/配置错误立即抛出，不让坏配置无限等待。
 def _call_with_transport_pause(call, cfg, *, label: str = "LLM",
                                on_pause=None):
     """Run one semantic model operation, pausing on recoverable transport failure.
@@ -525,6 +543,10 @@ def _call_with_transport_pause(call, cfg, *, label: str = "LLM",
 
 
 def uv_accept_ok(cfg, unverified: int, commit: bool, wrongs: int) -> bool:
+    # 【中文注释】E4-A1"未验证即接受"决策（抽成纯函数便于测试）。
+    # 遗留策略：第 N 次 could-not-confirm 就接受（E3 逃生门，多个负分案例的根源）；
+    # budget_conditional_accept 只在收官阶段且记录干净时接受；verifier_continuity
+    # 让一次 WRONG 撤销本运行剩余的"疑点利益"——用证据而非耗尽的耐心结案。
     """E4-A1: the unverified-accept decision, extracted for testability.
 
     Legacy (both flags off): Nth could-not-confirm accepts, whatever the run's

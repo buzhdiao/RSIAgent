@@ -1,3 +1,9 @@
+# 【中文注释·模块定位】P2 提示词表面——"被审计的练习章程"集合（含反驳者/策展）。
+# Constraint #0-P2：只允许通用原则 + 公开应用元数据（域名属于防火墙规则 2 的合法
+# 项：基准公开应用清单 = 已知主题）。没有任务标记、没有基准基础设施主机名。
+# tests/test_p2_firewall.py 审计本文件；每次变更都记录进 docs/PROMPTLOG.md。
+# 本文件是三智能体协议的"话术层"：Curriculum/Actor/Verifier 的角色章程与学习消息
+# 全部在此组装，代码其余部分只负责搬运与执行这些文本。
 """P2 prompt surfaces — THE audited practice charter (+ refuter / curation).
 
 Constraint #0-P2: general principles + public app metadata ONLY (domain names
@@ -8,6 +14,11 @@ every change logged in docs/PROMPTLOG.md.
 
 
 def memory_preamble(listing: str = "") -> str:
+    # 【中文注释】记忆序言：把冻结记忆暴露给 Actor，但"检索"仍由 Actor 自己决定。
+    # 机械清单只含文件名与大小；不向上下文注入任何文件正文；任何文件名（包括
+    # INDEX.md）都没有特权。列出/搜索/预览/重读/判断相关性都是 Actor 自己的动作
+    # ——这保证了"测期记忆复用"不预置宿主侧的检索偏置。空记忆与有记忆各有一句
+    # 如实的状态说明；正文提醒记忆可能是错的/过时的，必须对照活环境验证。
     """Expose frozen memory without choosing retrieval for the Actor Agent.
 
     The mechanical listing contains names and sizes only.  No file body is
@@ -593,6 +604,13 @@ def self_evolving_actor_charter(
     handoff_path: str = "~/actor_handoff.md",
     project_root: str = "/home/user/evolution_project",
 ) -> str:
+    # 【中文注释】自进化 Actor 章程：一个项目的全新上下文开场提示词。要点：
+    # 持久记忆在 ~/.memory（可能有用/错误/过时/无关，由 Actor 决定查什么并对照
+    # 活环境验证）；Curriculum 的私有推理对 Actor 不可见（角色隔离）；项目文本
+    # 逐字透传；代码是控制通道——候选必须满足项目的字面要求；验收权在 Verifier；
+    # 停止时写一份完整无损交接（首行 STATUS: SUBMIT——中性令牌，不宣称成败）；
+    # 本 episode 只有一次工作阶段和一次判定，无同项目返工；项目期间不更新持久
+    # 记忆——记忆蒸馏与整合在判定之后由同一 Actor 上下文分开进行。
     """Initial fresh-context Actor Agent prompt for one project."""
     listing = memory_listing.strip() or "(no durable memory files yet)"
     return f"""ACTOR AGENT — NEW PROJECT.
@@ -1164,6 +1182,11 @@ No separate done declaration or formatting-only rewrite follows publication."""
 def self_evolving_actor_memory_distillation_msg(
     terminal_outcome: str, verifier_report: str, memory_root: str = "~/.memory"
 ) -> str:
+    # 【中文注释】记忆蒸馏消息：PASS 或 FAIL 之后，同一 Actor 上下文的终局学习回合。
+    # 要点：终态只有 PASS/FAIL 两值（否则 ValueError）；Verifier 报告逐字附上；
+    # 明确分工——Verifier 只确立"验证了什么/没验证什么"，不确立"你的方法为何
+    # 成功/失败"；因果断言必须有轨迹与证据支撑，否则保留不确定性；Actor 自行
+    # 判断如何更新 ~/.memory 才能让未来全新 Actor 更能干。
     """Final same-context Actor Agent memory turn after PASS or FAIL."""
     outcome = terminal_outcome.strip().upper()
     if outcome not in {"PASS", "FAIL"}:

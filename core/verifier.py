@@ -1,3 +1,11 @@
+# 【中文注释·模块定位】独立 Verifier——done 时刻的"零历史新上下文"检查（v8，系统级）。
+# 论文中的 Verifier 隔离原则在此落地：语义纠缠失败（假完成第 3 种）表明 Actor 自己的
+# 检查会继承 Actor 自己的错误假设，再多提示也查不出来；结构性修复是"独立性"——
+# 一次零历史模型调用，只看任务指令与活机器（看不到 Actor 的推理、证据或检查），
+# 自行重导出需求、只读探测机器、独立判定。验收规则：Actor 的检查必须通过 且 本次
+# 独立检查未发现违规（"pass"才接受；反复 "unverified" 可在预算规则下迟接受；
+# "wrong" 总是带着 FINDINGS（证据而非权威）弹回修复）。本文件同样是防泄漏审计表面
+# （Constraint #0），一切内容必须通用。
 """Independent verifier — a fresh-context inspection at done-time (v8, system-level).
 
 The semantic-entanglement failure (false-done species #3) showed that an actor's own
@@ -31,6 +39,9 @@ log = logging.getLogger("rsiagent.verifier")
 # Mechanical liveness only. An Agent can investigate across many productive
 # segments; repeated segments without any Program/Look require runtime recovery,
 # never a fabricated candidate verdict or Curriculum convergence decision.
+# 【中文注释】仅作机械活性检测：智能体可以跨多个有产出的段落持续调查；连续多段
+# 无任何 Program/Look 属于运行时故障，需要恢复——绝不允许据此伪造候选判定或
+# 宣布 Curriculum 收敛（与 phase1_wave 的同类上限语义一致）。
 _MAX_ACTIONLESS_VERIFIER_SEGMENTS = 3
 
 
@@ -177,6 +188,13 @@ class _V:
 VERIFIER_SYSTEM = build_verifier_system(_V())
 
 
+# 【中文注释】VerifierSession：一个 Verifier 智能体的"会话 + 累计检查遥测"。
+# 继承 list——会话本身就是消息列表（对话连续性保留 Verifier 自己此前的推理与
+# 发现）。计数器只是遥测：证据新鲜度刻意对"每次候选检查"保持局部，因为更早的
+# 内容探测可能描述的是 Actor 随后已修订过的工件。会话还承载崩溃恢复元数据
+# （pending_observation/pending_images：最后一个已保留动作之后的环境结果，
+# 尚不构成完整对话对）与基础设施暂停累计（嵌套 Verifier 停机不消耗 Actor 的
+# 活动墙钟）。这是 Verifier"跨修订持久上下文"机制的实现载体。
 class VerifierSession(list):
     """One Verifier Agent's conversation plus cumulative inspection telemetry.
 
@@ -838,6 +856,13 @@ def _agentic_recovery_prompt(report_channel: str, reason: str,
         + evidence)
 
 
+# 【中文注释】verify_agentic：运行一次"持久、效果隔离"的 Verifier 智能体检查
+# （基准默认路径）。Verifier 保留普通持久对话、任意 code-as-policy 与 Look 通道；
+# 其 Program 执行器把候选文件系统变为只读，隔离进程/网络/GUI 副作用，同时保留
+# 一块私有可写草稿区（scratch）——这是 Verifier 隔离原则的机械实现：它调查的
+# 是"受回滚保护的候选"，Actor 私有工件被隐藏，其客户机内改动在检查后被回滚，
+# Actor 的工作恢复时不残留 Verifier 的痕迹。配置中的数值上限与 wall_budget 只是
+# 紧急看门狗，不是停止指令。session 传入 VerifierSession 即可跨修订延续同一上下文。
 def verify_agentic(instruction: str, vm, cfg, sink=None, turn_no: int = 0,
                     context: str = "", session: list = None,
                     wall_budget: float = None,
@@ -1329,6 +1354,9 @@ def verify_agentic(instruction: str, vm, cfg, sink=None, turn_no: int = 0,
     return "unverified", findings
 
 
+# 【中文注释】verify_independent：独立检查（v8 经典路径，非 agentic 路由时使用）。
+# 返回 (verdict, findings)；verdict 为 "pass" | "wrong" | "unverified"。
+# 刻意三态：判 "wrong" 必须有具体违规证据（must-fix）；无法证实也不谎报通过。
 def verify_independent(instruction: str, vm, cfg, sink=None, turn_no: int = 0,
                        context: str = "", session: list = None,
                        wall_budget: float = None,

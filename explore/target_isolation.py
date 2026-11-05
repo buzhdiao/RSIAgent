@@ -1,3 +1,11 @@
+# 【中文注释·模块定位】RSI TARGET 进化的"宿主强制公网出口边界"。
+# 威胁模型：桌面 Agent 在 QEMU 客户机里是 root——客户机防火墙提供不了安全边界。
+# 因此本模块把策略装在"外一层"：拥有 QEMU dockerbridge tap 的 OSWorld Docker
+# 容器里，并让唯一任务可见网站经由可信宿主进程中的过滤网关中继。
+# 目标模式只放行 HTTP Host / HTTPS TLS SNI 恰好等于 streamview.web.hku.icu 的流量；
+# 网关始终自己解析并连接该规范主机名——客户机无法通过换目标 IP 选中其他上游。
+# 空项目模式（null-project）不允许任何客户机发起的公网流量；既有宿主-控制器连接
+# 用窄化的 ESTABLISHED/RELATED 规则保留。这是 sealed evaluation 环境纯净性的网络侧保障。
 """Host-enforced public-egress boundary for RSI TARGET evolution.
 
 The desktop Agent is root inside a QEMU guest.  Guest firewall rules therefore
@@ -45,14 +53,17 @@ L2_CHAIN = "RSI_TARGET_L2"
 MAX_PREFACE_BYTES = 65_536
 
 
+# 出口边界安装/验证失败（fail closed：装不上就拒绝运行，不带病放行）。
 class RSIEgressError(RuntimeError):
     """The host-enforced egress boundary could not be installed or verified."""
 
 
+# 前导字节不足：需要更多字节才能判定连接是否放行（TCP 流式解析的中间态）。
 class PrefaceIncomplete(ValueError):
     """More bytes are required to decide whether a connection is allowed."""
 
 
+# 前导拒绝：HTTP Host 或 TLS SNI 缺失、畸形、或不在白名单内。
 class PrefaceRejected(ValueError):
     """An HTTP Host or TLS SNI is absent, malformed, or outside the allowlist."""
 
@@ -358,6 +369,9 @@ class GatewayPorts:
     https: int
 
 
+# 【中文注释】网关身份：短命 CA 与精确主机名叶子证书，仅由可信宿主进程持有——
+# 用于 TLS 拦截（网关以真实身份代客户机与上游握手，同时向客户机出示覆盖该
+# 域名的叶子证书），使 SNI 过滤对加密流量同样生效；私钥不出宿主进程。
 @dataclass(frozen=True)
 class GatewayIdentity:
     """Ephemeral CA/leaf identity retained only by the trusted host process."""
@@ -473,6 +487,12 @@ def _server_ssl_context(
     return context
 
 
+# 【中文注释】FilteringTcpGateway：宿主侧过滤网关核心（threading 多线程 accept 循环）。
+# 监听 HTTP/HTTPS 两个端口：读取连接前导（HTTP Host 头 / TLS ClientHello SNI），
+# 与白名单（唯一任务网站）精确匹配——不匹配即断连；匹配则解析上游（网关自己做
+# DNS，客户机选不了上游 IP）并中继流量。上下文管理器协议（__enter__/__exit__）
+# 保证监听套接字确定关闭。与 iptables 链配合构成"双层封印"：链把客户机流量
+# 重定向到网关，网关再按白名单放行。
 class FilteringTcpGateway:
     """Host-side HTTP/TLS terminator enforcing exact origin at both layers."""
 
