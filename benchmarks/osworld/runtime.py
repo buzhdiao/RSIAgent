@@ -18,36 +18,47 @@ from config.runtime_paths import (
     resolve_root,
 )
 
+# RSIAgent 仓库根目录
 RSIAGENT_ROOT = resolve_root()
 
+# OSWorld-V2 检出根目录（默认为本仓的兄弟目录）
 OSWORLD_ROOT = resolve_osworld_root(repo_root=RSIAGENT_ROOT)
 
+# 基准任务发布版标识
 BENCHMARK_TASK_RELEASE = "osworld-v2-2026.08.08"
 
+# 默认基准锁（release lock）文件路径
 DEFAULT_BENCHMARK_PROFILE = RSIAGENT_ROOT / "config/osworld/baseline.lock.json"
 
 
 def _install_paths() -> None:
+    # OSWorld 检出必须存在
     if not OSWORLD_ROOT.is_dir():
         raise RuntimeError(f"OSWorld-V2 checkout does not exist: {OSWORLD_ROOT}")
     try:
         import dotenv
 
+        # 加载 OSWorld 自带 .env（不覆盖已有环境变量）
         dotenv.load_dotenv(OSWORLD_ROOT / ".env", override=False)
     except ImportError:
         pass
+    # 填充任务用户模拟器通道的回退凭据
     load_user_simulator_credential(repo_root=RSIAGENT_ROOT)
     for path in (str(OSWORLD_ROOT), str(RSIAGENT_ROOT)):
         if path not in sys.path:
+            # 把两个检出目录插入模块搜索路径
             sys.path.insert(0, path)
+    # 工作目录切换到 OSWorld 根（其代码按相对路径取数据）
     os.chdir(OSWORLD_ROOT)
 
 
 def _rsiagent_openrouter_key() -> str:
     """Resolve the shared transport credential without exposing it in artifacts."""
+    # 先看进程环境
     key = os.environ.get("OPENROUTER_API_KEY", "").strip()
     if key:
         return key
+    # 回退：解析仓库 .env 凭据文件
     env_path = resolve_env_file(repo_root=RSIAGENT_ROOT)
     try:
         lines = env_path.read_text(encoding="utf-8").splitlines()
@@ -56,7 +67,9 @@ def _rsiagent_openrouter_key() -> str:
     for line in lines:
         name, separator, value = line.partition("=")
         if separator and name.strip() == "OPENROUTER_API_KEY":
+            # 剥离空白与引号后返回
             return value.strip().strip("'\"")
+    # 都没有：返回空串（调用方负责失败处理）
     return ""
 
 
@@ -71,17 +84,22 @@ def _configure_sealed_evaluator(
     The returned record is secret-free and is written to the experiment manifest.
     """
     lock_path = lock_path.expanduser().resolve(strict=True)
+    # 读取锁 JSON
     lock = json.loads(lock_path.read_text(encoding="utf-8"))
     actor = lock.get("actor_agent") or {}
     evaluator = lock.get("evaluator") or {}
+    # 计算目标 Actor 配置文件的哈希
     target_sha256 = hashlib.sha256(target_path.read_bytes()).hexdigest()
     if actor.get("model") != target_cfg.model:
+        # 锁声明的 Actor 模型必须与目标配置一致
         raise RuntimeError("benchmark lock Actor model does not match target config")
     if actor.get("sha256") != target_sha256:
+        # 配置哈希也必须一致（防漂移）
         raise RuntimeError(
             "benchmark lock Actor config hash does not match target config"
         )
 
+    # 评审器运行时的必填字段
     required = (
         "provider",
         "model",
@@ -95,15 +113,19 @@ def _configure_sealed_evaluator(
     if missing:
         raise RuntimeError(f"benchmark lock evaluator config is incomplete: {missing}")
     if evaluator["visibility"] != "sealed_after_actor_verifier_loop":
+        # 可见性必须是“Actor/Verifier 循环结束后才封印启用”
         raise RuntimeError("benchmark lock evaluator is not sealed after the loop")
     key = _rsiagent_openrouter_key()
     if not key:
+        # 封印评审器凭据缺失：宁可提前失败，也不悄悄低估分数
         raise RuntimeError(
             "sealed evaluator credential is absent: configure OPENROUTER_API_KEY"
         )
 
     # Assign, rather than setdefault, so a stale interactive shell cannot silently
     # drift a release-bound experiment away from its reviewed evaluator config.
+    # （中文）用直接赋值而非 setdefault：陈旧交互 shell 里的旧变量不能悄悄把
+    # 发布绑定实验带离已评审的评审器配置。
     os.environ["OPENROUTER_API_KEY"] = key
     os.environ["WEBSITE_HOST_SUFFIX"] = str(evaluator["website_host_suffix"])
     os.environ["OSWORLD_EVAL_MODEL_PROVIDER"] = str(evaluator["provider"])
@@ -112,6 +134,7 @@ def _configure_sealed_evaluator(
     os.environ["OSWORLD_EVAL_MODEL_API_KEY_ENV"] = "OPENROUTER_API_KEY"
     os.environ["OSWORLD_EVAL_MODEL_RETRY_ATTEMPTS"] = str(evaluator["retry_attempts"])
     os.environ["OSWORLD_EVAL_MODEL_RETRY_DELAY"] = str(evaluator["retry_delay_seconds"])
+    # 返回无密钥的绑定回执（写入实验清单）
     return {
         "lock_path": str(lock_path),
         "lock_sha256": hashlib.sha256(lock_path.read_bytes()).hexdigest(),
@@ -121,14 +144,17 @@ def _configure_sealed_evaluator(
         "retry_attempts": int(evaluator["retry_attempts"]),
         "retry_delay_seconds": float(evaluator["retry_delay_seconds"]),
         "visibility": str(evaluator["visibility"]),
+        # 只声明凭据“已配置”，不写内容
         "credential": "configured",
     }
 
 
 def _probe_sealed_evaluator_transport() -> dict[str, str]:
     """Make one task-independent authentication probe before Actor work."""
+    # 延迟导入 OSWorld 的模型客户端（评审传输层）
     from desktop_env.evaluators.model_client import generate_text
 
+    # 发一个与任务无关的最小探测请求，验证评审通道凭据/路由可用
     response = str(
         generate_text(
             "Evaluator transport preflight only. Reply exactly READY.",
@@ -136,9 +162,11 @@ def _probe_sealed_evaluator_transport() -> dict[str, str]:
         )
     ).strip()
     if not response:
+        # 空回复：通道不可用，提前失败
         raise RuntimeError("sealed evaluator transport preflight returned empty output")
     return {
         "status": "ready",
+        # 只留响应哈希作回执，不留内容
         "response_sha256": hashlib.sha256(
             response.encode("utf-8", "replace")
         ).hexdigest(),
@@ -146,6 +174,7 @@ def _probe_sealed_evaluator_transport() -> dict[str, str]:
 
 
 def _sha256_file(path: Path) -> str:
+    # 分块流式计算文件 SHA-256（支持大文件）
     digest = hashlib.sha256()
     with path.open("rb") as handle:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
@@ -154,6 +183,7 @@ def _sha256_file(path: Path) -> str:
 
 
 def _git_value(repository: Path, *args: str) -> str:
+    # 在指定仓库中执行 git 子命令并返回标准输出（失败即抛异常）
     completed = subprocess.run(
         ["git", "-C", str(repository), *args],
         check=True,
@@ -167,19 +197,23 @@ def _git_value(repository: Path, *args: str) -> str:
 def _task_content_identity(task_dir: Path) -> dict[str, Any]:
     """Return the release-sensitive identity used by the 0808 baseline lock."""
 
+    # 收集全部任务源文件（排序保证确定性）
     paths = sorted(task_dir.glob("task_*.py"))
     rows = []
     total_bytes = 0
     for path in paths:
+        # 记录每文件的（名字, 大小, SHA-256）行
         size = path.stat().st_size
         total_bytes += size
         rows.append(f"{path.name}\t{size}\t{_sha256_file(path)}")
     return {
+        # 内容树总哈希
         "content_tree_sha256": hashlib.sha256(
             "\n".join(rows).encode("utf-8")
         ).hexdigest(),
         "total_bytes": total_bytes,
         "task_count": len(paths),
+        # 任务文件名集合的哈希
         "task_ids_sha256": hashlib.sha256(
             "\n".join(path.stem for path in paths).encode("utf-8")
         ).hexdigest(),
@@ -198,11 +232,13 @@ def _asset_content_identity(asset_root: Path, marker_name: str) -> dict[str, Any
         if (
             relative.parts and relative.parts[0] == ".cache"
         ) or relative.as_posix() == marker_name:
+            # 下载器缓存目录与标记文件本身不计入身份
             continue
         size = path.stat().st_size
         total_bytes += size
         rows.append(f"{relative.as_posix()}\t{size}\t{_sha256_file(path)}")
     return {
+        # 资产内容树总哈希
         "content_tree_sha256": hashlib.sha256(
             "\n".join(rows).encode("utf-8")
         ).hexdigest(),
@@ -217,15 +253,18 @@ def _release_lock_provenance(
     """Fail closed on a strict release lock such as the 2026-08-08 lock."""
 
     if profile.get("schema_version") != 2 or profile.get("benchmark") != "OSWorld-v2":
+        # 只接受 OSWorld-v2 的 schema v2 锁
         raise RuntimeError("unsupported OSWorld release-lock schema")
     release_name = profile.get("benchmark_release")
     if not isinstance(release_name, str) or not release_name:
         raise RuntimeError("OSWorld release lock lacks benchmark_release")
 
+    # 任务源码目录
     task_dir = OSWORLD_ROOT / "evaluation_examples" / "task_class"
     observed_names = sorted(path.name for path in task_dir.glob("task_*.py"))
     expected_count = int(profile.get("task_count", 0))
     if len(observed_names) != expected_count:
+        # 任务数量与严格锁不符
         raise RuntimeError(
             "OSWorld task count differs from the strict release lock: "
             f"expected={expected_count}, observed={len(observed_names)}"
@@ -234,17 +273,20 @@ def _release_lock_provenance(
     task_files = profile.get("task_files") or {}
     for key in ("content_tree_sha256", "total_bytes"):
         if identity[key] != task_files.get(key):
+            # 任务源码内容与锁不符
             raise RuntimeError(
                 "OSWorld task sources differ from the strict release lock: "
                 f"{key} expected={task_files.get(key)!r}, "
                 f"observed={identity[key]!r}"
             )
     if identity["task_ids_sha256"] != profile.get("task_ids_sha256"):
+        # 任务文件名集合与锁不符
         raise RuntimeError("OSWorld task filename set differs from the release lock")
 
     selected_name = f"{task_id}.py"
     expected_path = (task_dir / selected_name).resolve(strict=True)
     if task_class_path.resolve(strict=True) != expected_path:
+        # 选中的任务类必须落在冻结任务树内（防逃逸）
         raise RuntimeError("selected task class path escaped the frozen task tree")
     selected_sha256 = _sha256_file(expected_path)
 
@@ -253,29 +295,35 @@ def _release_lock_provenance(
         strict=True
     )
     if _sha256_file(release_path) != release_meta.get("sha256"):
+        # 发布清单哈希与锁不符
         raise RuntimeError("OSWorld release manifest differs from the release lock")
     release_manifest = json.loads(release_path.read_text(encoding="utf-8"))
     if release_manifest.get("release") != release_name:
+        # 清单声明的发布名必须一致
         raise RuntimeError("OSWorld release manifest names another release")
 
     runtime = profile.get("osworld_code") or {}
     runtime_commit = _git_value(OSWORLD_ROOT, "rev-parse", "HEAD")
     if runtime_commit != runtime.get("commit"):
+        # OSWorld 运行时检出提交与锁不符
         raise RuntimeError(
             "OSWorld runtime differs from the strict release lock: "
             f"expected={runtime.get('commit')}, observed={runtime_commit}"
         )
     if _git_value(OSWORLD_ROOT, "status", "--porcelain", "--untracked-files=no"):
+        # 已跟踪文件存在工作区改动：检出被污染
         raise RuntimeError("OSWorld runtime has tracked worktree changes")
 
     website = profile.get("website") or {}
     expected_website = website.get("host_suffix")
     if os.environ.get("WEBSITE_HOST_SUFFIX") != expected_website:
+        # 站点域名后缀环境变量必须与锁一致
         raise RuntimeError("WEBSITE_HOST_SUFFIX does not match the strict release lock")
 
     assets = profile.get("task_assets") or {}
     asset_value = os.environ.get("OSWORLD_FILE_BASE_URL", "").strip()
     if not asset_value or "://" in asset_value:
+        # 严格锁要求本地资产快照（不允许远程 URL）
         raise RuntimeError("strict release lock requires a local OSWORLD_FILE_BASE_URL")
     asset_root = Path(asset_value).expanduser().resolve(strict=True)
     expected_asset_root = (OSWORLD_ROOT / str(assets.get("local_dir", ""))).resolve(
@@ -285,6 +333,7 @@ def _release_lock_provenance(
         raise RuntimeError(
             "OSWORLD_FILE_BASE_URL does not name the locked asset snapshot"
         )
+    # 读资产快照的发布标记文件
     marker_name = str(assets.get("release_marker", ".rsiagent_osworld_release.json"))
     marker_path = (asset_root / marker_name).resolve(strict=True)
     marker = json.loads(marker_path.read_text(encoding="utf-8"))
@@ -301,6 +350,7 @@ def _release_lock_provenance(
         if marker.get(key) != value
     }
     if mismatch:
+        # 标记与锁不一致：资产来源不对
         raise RuntimeError(
             f"prepared asset marker differs from the release lock: {mismatch}"
         )
@@ -309,9 +359,11 @@ def _release_lock_provenance(
         raise RuntimeError("prepared asset marker lacks content_identity")
     observed_asset_identity = _asset_content_identity(asset_root, marker_name)
     if observed_asset_identity != marker_identity:
+        # 资产快照在制备之后发生过变化
         raise RuntimeError("prepared asset snapshot changed after release preparation")
 
     task_manifest = task_files.get("manifest_path")
+    # 汇总严格发布锁的全部审计事实（写入实验清单）
     return {
         "profile": f"{release_name}-strict-release",
         "classification": "strict_official_release",
@@ -348,18 +400,21 @@ def _benchmark_provenance(
 ) -> dict[str, Any]:
     """Validate the pinned OSWorld release before executing a target."""
 
+    # 读取锁文件并进入严格校验
     profile_path = profile_path.expanduser().resolve(strict=True)
     profile = json.loads(profile_path.read_text(encoding="utf-8"))
     return _release_lock_provenance(task_id, task_class_path, profile_path, profile)
 
 
 def _append_event(path: Path, event: str, payload: dict[str, Any]) -> None:
+    # 组装事件记录（UTC 时间戳 + 事件名 + 负载）
     record = {
         "timestamp_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "event": event,
         "payload": payload,
     }
     with path.open("a", encoding="utf-8") as handle:
+        # 追加一行 JSON 并强制落盘（事件不因崩溃丢失）
         handle.write(json.dumps(record, sort_keys=True) + "\n")
         handle.flush()
         os.fsync(handle.fileno())

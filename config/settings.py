@@ -1,19 +1,29 @@
 """rsiagent configuration — one model, loop budgets. Plain dataclass, optional YAML overlay."""
+# rsiagent 全局配置：单一模型 + 循环预算；纯 dataclass，可选 YAML 覆盖。
 from dataclasses import dataclass
 
 
+# 运行配置（全部开关的缺省值；角色 YAML 文件锁定完整设置）
 @dataclass
 class Config:
+    # Actor 主模型（角色 YAML 会锁定完整设置）
     model: str = "z-ai/glm-5.3"   # Default Actor model; role YAML files pin complete settings.
+    # 单次回复 token 预算（M3 截断下限约 8000，留出代码余量）
     max_tokens: int = 10000             # M3 truncation floor is ~8000; headroom for code
+    # 解码温度（0 = 贪心）
     temperature: float = 0.0
+    # 可选的 OpenRouter 供应商路由偏好（如 ("Z.AI",)；空 = 正常路由；设置后附着于
+    # Actor 调用、压缩与截断恢复调用）
     provider_order: tuple = ()          # Optional OpenRouter provider preference,
     #                                     e.g. ("Z.AI",). Empty preserves normal
     #                                     routing. When set, the route stays attached
     #                                     to Actor calls, compaction, and truncation
     #                                     recovery calls.
+    # 是否允许供应商回退（fallback）
     provider_allow_fallbacks: bool = True
+    # 是否要求供应商支持全部请求参数
     provider_require_parameters: bool = False
+    # P2 评估开关：冻结练习记忆库路径（只进不出；"" = 关闭）
     env_memory_dir: str = ""            # P2 eval flag: path to a FROZEN practice
     #                                     memory bank; synced read-only into the
     #                                     guest (~/.memory); only a mechanical
@@ -21,13 +31,16 @@ class Config:
     #                                     searches/previews/reads/re-reads; no file
     #                                     body or privileged index is injected. "" = OFF
     #                                     (byte-identical eval; the default).
+    # 附加系统指令：追加到 build_system() 输出末尾
     system_extra: str = ""              # appended to build_system() output —
     #                                     optional additional system instructions.
+    # done 见证门（自述探针拒绝 + 一次性见证驳回）
     done_witness_gates: bool = False    # P2-v9 D-1/D-2 (self-report probe
     #                                     rejection + one-shot witness bounce).
     #                                     Default OFF = legacy done-path (v41
     #                                     flagship behavior preserved exactly);
     #                                     ON in the E2 ablation/exam configs
+    # 验证者结构化逐需求判定（items 作为数据随裁决发布；默认关 = 字节级不变）
     verifier_items: bool = False        # E4-A1c (): the inspector's
     #                                     per-requirement judgement as DATA
     #                                     ("items": [{req,status,evidence}]) beside
@@ -37,6 +50,7 @@ class Config:
     #                                     between inspections becomes measurable.
     #                                     The scalar verdict stays the inspector's
     #                                     own call. Default OFF = byte-exact.
+    # 验证者自定深度（由 VERIFIER 裁定结束而非轮数计数；默认关 = 上限制旧行为）
     verifier_elastic_depth: bool = False  # E4-A1b (: "let verifier
     #                                     decide its own depth, we are not cap
     #                                     anything"): the inspection ends when the
@@ -47,6 +61,7 @@ class Config:
     #                                     "N rounds left" pressure line is replaced
     #                                     by "rule when YOUR evidence settles it".
     #                                     Default OFF = capped legacy behavior.
+    # 验证者连续性：一次运行一个持续会话；WRONG 后未验证结尾不再自动接受
     verifier_continuity: bool = False   # E4-A1 (, E3 exit-door fix):
     #                                     the verifier becomes ONE continuing
     #                                     session per run (its verdicts = its own
@@ -57,6 +72,7 @@ class Config:
     #                                     independent-channel EVIDENCE REQUEST.
     #                                     Default OFF = E3-and-earlier byte-exact.
     #                                     where the fix was validated.
+    # 非空路径 = 任务测试床接入完整 Agent 运行时的验证者；空 = 保留原 JSON 探针检查器
     agentic_verifier_config: str = ""   # EXP: nonempty path opts the normal task
     #                                     harness into the same full Agent runtime
     #                                     used by self-evolution's Verifier Agent.
@@ -66,6 +82,7 @@ class Config:
     #                                     PASS/FAIL report when it decides it is done.
     #                                     Empty preserves the incumbent JSON-probe
     #                                     inspector byte-for-byte.
+    # 统一循环开关：持久验证者发布 HANDOFF/REVISE/EVOLVE 路由（False = 基准测试床）
     verifier_evolve_route: bool = False  # Unified-loop opt-in. The persistent
     #                                     Verifier Agent publishes exactly one
     #                                     HANDOFF / REVISE / EVOLVE route instead
@@ -73,6 +90,7 @@ class Config:
     #                                     the self-evolving pipeline; it never
     #                                     invokes or receives an external grader.
     #                                     False preserves the benchmark harness.
+    # 权限分离：验证者只发布 PASS/FAIL，路由交给注入的持久 Curriculum Agent
     verifier_local_verdict_only: bool = False
     #                                     Separated unified-loop authority. Keep
     #                                     the explicit terminal transport above,
@@ -83,6 +101,7 @@ class Config:
     #                                     and REVISE / EVOLVE after FAIL.
     #                                     False preserves the earlier unified
     #                                     Verifier-owned routing experiment.
+    # 三元本地裁决：未决主张可发布 UNVERIFIED，Actor 仅限暴露证据线索后重审
     verifier_unverified_evidence: bool = False
     #                                     Agentic three-way local verdict. When a
     #                                     material claim remains unresolved (or
@@ -92,6 +111,7 @@ class Config:
     #                                     to expose reproducible evidence leads;
     #                                     the same Verifier then re-investigates.
     #                                     False preserves PASS/FAIL transport.
+    # 具体本地 FAIL 直接进入学习/练习生命周期（自进化基准用；False = 同 Actor 修复）
     verifier_failure_starts_evolution: bool = False
     #                                     Self-evolving benchmark opt-in. A
     #                                     concrete local Verifier Agent FAIL ends
@@ -101,6 +121,7 @@ class Config:
     #                                     this transition is the declared protocol,
     #                                     not a Curriculum or Verifier route. False
     #                                     preserves same-Actor repair behavior.
+    # 角色边界：对 Verifier 的 Program/Look 隐藏 ~/.memory（可查候选、不可看 Actor 私策）
     verifier_hide_actor_memory: bool = False
     #                                     Unified-loop role boundary. Hide
     #                                     ~/.memory from Verifier-authored Programs
@@ -108,6 +129,7 @@ class Config:
     #                                     can inspect the candidate but not the
     #                                     Actor Agent's private durable policy.
     #                                     False preserves historical benchmark runs.
+    # 统一循环：持久验证者可先研究 S0 环境、自写私有评估器，再在原上下文内评审
     verifier_stage_lifecycle: bool = False
     #                                     Unified-loop opt-in. A persistent target
     #                                     Verifier model identity freely studies a
@@ -115,16 +137,20 @@ class Config:
     #                                     author a private executable evaluator,
     #                                     then remains in the same context for
     #                                     candidate evaluation and later revisions.
+    # 跨阶段/跨候选修订保留验证者的私有暂存（目标更新时归档再恢复，无大小上限）
     verifier_persist_scratch: bool = False
     #                                     Keep the Verifier Agent's private scratch
     #                                     across its stage changes and candidate
     #                                     revisions. Unified target renewal archives
     #                                     and restores it without a size ceiling.
+    # 追加对验证者隐藏的 Actor 私有 guest 路径（候选面仍可读但只读）
     verifier_private_paths: tuple = ()
     #                                     Additional harness-owned Actor-private
     #                                     guest paths hidden from Verifier Programs
     #                                     and file Looks. The authoritative candidate
     #                                     surface remains readable and read-only.
+    # 验证者执行边界："effect_isolated" 只读 fs + 私有 PID/网络/IPC 命名空间；
+    # "rollback_mirror" 为完整 guest 检查点 + 评审后精确恢复
     verifier_execution_mode: str = "effect_isolated"
     #                                     Agentic Verifier execution boundary.
     #                                     "effect_isolated" preserves the historical
@@ -134,6 +160,7 @@ class Config:
     #                                     inspect its live processes/network/GUI, then
     #                                     restores the exact checkpoint before grading.
     #                                     Actor-private paths remain hidden in both.
+    # S0 前隔离 guest 内可见的任务类评审器源码/编译物（官方评审器保持仅宿主机）
     actor_evaluator_isolation: bool = False
     #                                     OSWorld target validity boundary. Before S0
     #                                     and before either Agent exists, quarantine
@@ -141,22 +168,26 @@ class Config:
     #                                     and compiled artifacts. The official sealed
     #                                     evaluator remains host-only. False preserves
     #                                     historical target setup byte-for-byte.
+    # 练习 done 前必须存在的 guest 路径（仅存在性探测；"" = 关闭）
     practice_done_requires: str = ""    # P2 (BRIEF Phase 0): a guest path that must
     #                                     EXIST before a practice_mode done is
     #                                     accepted (existence-only probe; content
     #                                     never read — firewall-clean). Bounded by
     #                                     max_consec_done -> stall -> fail-open.
     #                                     "" = OFF (practice episodes unaffected).
+    # P2 练习档案：done = 会话结束（无任务检查/评审）；其余场景无效
     practice_mode: bool = False         # P2 practice profile: done = session end
     #                                     (no task checks/inspection — no task
     #                                     exists); pair with independent_verify
     #                                     false. Inert everywhere else.
+    # >=0 时显式发送 top_p；-1 = 省略字段（K3 协议要求 temp=1.0/top-p=1.0 时钉住）
     top_p: float = -1.0                 # >=0 SENDS top_p explicitly; -1 omits the
     #                                     field entirely (provider default). K3's
     #                                     report pins "temperature = 1.0 and
     #                                     top-p = 1.0" — we were compliant only by
     #                                     accident (never sent it).  08-09:
     #                                     "top p is crucial for k3 setting" -> pin it.
+    # >=0 时仅覆盖主 Actor 解码循环的温度（-1 = 关闭，字节级同 v41）
     primary_temperature: float = -1.0   # >=0 overrides temperature for the PRIMARY
     #                                     actor's decode loop ONLY (K3 report 07-27:
     #                                     official evals run temp=1.0/top-p=1.0; our 0.0
@@ -164,8 +195,10 @@ class Config:
     #                                     identical v41). Neutralized on escalation
     #                                     _replace so GLM segments keep proven settings;
     #                                     verifier/eyes/summarizer sites untouched.
+    # 干轮重试所用温度：打破 temp-0 的重复 token 吸引子（解码退化）
     retry_temperature: float = 0.7      # used on dry-turn retries: breaks the temp-0
     #                                     repeated-token attractor (decoder degeneration)
+    # 推理努力档位（M3 忽略；支持该参数的模型尊重；"none" 唯一有效，"" 省略字段）
     reasoning_effort: str = "low"       # M3 IGNORES effort gradations (low==high,
     #                                     verified 2026-07-06: it scales reasoning with
     #                                     problem difficulty, not this knob) — inert for
@@ -173,6 +206,7 @@ class Config:
     #                                     the only EFFECTIVE knob (disables reasoning,
     #                                     used by the truncation retry); "" = omit field
     # loop budgets
+    # 实验：正常完成权归 Agent（预算仅作看门狗，不进提示词、不触发提交压力）
     agent_decided_stop: bool = False     # EXP: normal completion belongs to the
     #                                     agent.  max_iters/wall_clock_secs remain
     #                                     emergency watchdogs, are not disclosed in
@@ -180,37 +214,50 @@ class Config:
     #                                     surface as safety_ceiling rather than a
     #                                     valid budget ending.  Default OFF preserves
     #                                     every registered harness/config.
+    # 最大轮数 = 程序轮 + done 尝试（nudge 不计；10 被证明太小）
     max_iters: int = 24                 # program turns + done attempts (nudges don't count).
     #                                     10 proved too small: seed0 burned all 10 on a good
     #                                     recon->extract trajectory and died mid-flight.
+    # 脚本超时（HTTP 层；VM 内提前 30 秒击杀，部分 trace 得以保留）
     script_timeout: int = 600           # HTTP; in-VM kill fires 30s earlier (partial trace survives)
+    # 客户机 OOM 后控制器恢复等待秒数（暂停采样等待稳定通道；0 = 旧快速重试路径）
     controller_recovery_secs: int = 180 # A guest OOM can restart OSWorld's command
     #                                     controller after an Actor action has already
     #                                     failed. Pause sampling and wait for a stable
     #                                     channel so the SAME Actor can observe that
     #                                     failure and continue. This never replays the
     #                                     action. 0 restores the legacy rapid-retry path.
+    # 控制器恢复探测间隔秒数
     controller_recovery_probe_secs: float = 5.0
+    # 判定通道稳定所需的连续探测次数
     controller_recovery_stable_probes: int = 2
+    # 可恢复的 API/供应商故障的暂停秒数（不计入有效工作墙钟）
     llm_infra_retry_secs: float = 30.0  # recoverable API/provider failures pause
     #                                      without creating an agent turn or spending
     #                                      the active-work wall clock
+    # 单条验证探针的超时秒数
     check_timeout: int = 30             # per verification probe
+    # 检查容量上限（超容按价值逐出，绝不否决 done）
     max_checks: int = 16            # capacity only — overflow evicted least-valuable-
     #                                 first (v16), never vetoes done (12 was too tight:
     #                                 a run's content checks were evicted for proxies)
+    # 已废弃/无效兼容字段：累计 nudge 永不终止 Agent
     max_nudges: int = 0                 # DEPRECATED/inert compatibility field:
     #                                      cumulative nudges never terminate an Agent
+    # 连续不可解析轮数达到阈值 -> 判定停滞
     max_consec_dry: int = 3             # consecutive unparseable turns -> stalled
+    # v21(A)：同类动作对象 >=2 视为解码退化——什么都不跑，重新要求单动作
     strict_one_action: bool = True      # v21 (A): a reply with >=2 objects of ONE
     #                                     action kind is decoder degeneration — run
     #                                     NOTHING, re-ask for one action (not the old
     #                                     run-last+note, which ran ritual/duplicate
     #                                     objects and bred a false world-model). False
     #                                     = pre-v21 behavior (the A/B control arm).
+    # 连续退化多动作轮数的阈值，超过则升级到新上下文 pivot
     max_consec_degen: int = 3           # consecutive degenerate multi-action turns
     #                                     before escalating to the fresh-context pivot
     #                                     (which reliably breaks the decoder loop)
+    # v21(B)：unverified 裁决只在晚期（提交阶段）且无 confirmed-wrong 时才自动接受
     budget_conditional_accept: bool = False  # v21 (B): an 'unverified' verdict only
     #                                     auto-accepts LATE (commit phase) and only if
     #                                     no confirmed-wrong preceded it — else it
@@ -218,22 +265,28 @@ class Config:
     #                                     leak: 47% of unverified-accepts scored <0.1,
     #                                     self-truncation with budget left). False =
     #                                     pre-v21 (accept on 2nd unverified regardless).
+    # 已废弃/无效兼容字段：WRONG 永远返回同一 Actor，不触发换模型 pivot
     max_wrong_before_pivot: int = 3     # DEPRECATED/inert compatibility field.
     #                                     Verifier WRONG is semantic feedback and now
     #                                     always returns to the same Actor Agent/context;
     #                                     it never triggers a fresh-model pivot.
+    # 连续失败的 done 声明次数阈值 -> 判定停滞
     max_consec_done: int = 3            # consecutive failed done-declarations -> stalled
+    # v15：预算未尽却停滞 -> 同机新上下文续跑（停滞仅限会话；0 = 关闭）
     max_resumes: int = 1                # v15: stall w/ budget left -> fresh-context
     #                                     attempt on the SAME machine (stalls are
     #                                     conversation-local; the machine is sound).
     #                                     0 = off
+    # 续跑时把旧 WORK LOG 交给新尝试
     resume_with_worklog: bool = True    # hand the old WORK LOG to the fresh attempt
+    # v21：卡死 pivot/续跑时改用不同模型（"" = 同模型，不升级）
     escalation_model: str = ""          # v21: when a stuck run pivots/resumes, run the
     #                                     FRESH attempt on a DIFFERENT model (M3 stays
     #                                     primary; escalation fires only on the rare stuck
     #                                     restart). A genuine different draw — the one
     #                                     lever left after the sweep proved harness
     #                                     margins tapped out. "" = same model (no escalation)
+    # 升级 Actor 段可选的完整 Agent 验证者配置（保持角色非对称；历史不跨模型重放）
     escalation_agentic_verifier_config: str = ""  # Optional full-Agent verifier
     #                                     config for the escalated Actor segment. This
     #                                     preserves role asymmetry when the escalation
@@ -241,12 +294,17 @@ class Config:
     #                                     A model/config switch starts a separate
     #                                     persistent Verifier Agent context; histories
     #                                     are never replayed across different models.
+    # 升级模型的 Actor 专属温度覆盖（-1 = 用通用温度）
     escalation_primary_temperature: float = -1.0  # Actor-only decode override for
     #                                     the escalation model. Sampling points are
     #                                     model-specific; -1 uses general temperature.
+    # 升级段的供应商路由（模型特定）
     escalation_provider_order: tuple = ()         # Provider routing is model-specific.
+    # 升级段是否允许供应商回退
     escalation_provider_allow_fallbacks: bool = True
+    # 升级段是否要求供应商支持全部参数
     escalation_provider_require_parameters: bool = False
+    # v22：视觉模型（"eyes as a tool"）；"" = 图像直接附给主模型
     vision_model: str = ""              # v22: when set, the `look` action routes the
     #                                     image + the model's question to THIS (vision)
     #                                     model and returns its TEXT answer into the
@@ -255,6 +313,7 @@ class Config:
     #                                     delegating perception ("eyes as a tool"). ""
     #                                     = legacy behavior (attach the image to the
     #                                     primary itself, for a multimodal primary like M3).
+    # v22.1：1 = 单次看图；>1 = 视觉代理（VLM 可多轮 zoom/crop 后再作答）
     vision_rounds: int = 1              # v22.1: 1 = single-shot eyes (one glance -> one
     #                                     answer). >1 = the vision AGENT: the VLM may
     #                                     zoom/crop/grid-inspect over up to this many
@@ -262,6 +321,7 @@ class Config:
     #                                     (mirrors the verifier's multi-probe loop).
     #                                     Single glances mis-COUNT and mis-read small
     #                                     text; systematic inspection fixes it (t101).
+    # v24：独立检查员可发 look 探针确认/反驳视觉需求（t063 假 done 修复）
     vision_verify: bool = True          # v24: when vision_model is set, the INDEPENDENT
     #                                     inspector may issue a look-probe (render the
     #                                     deliverable -> eyes) to confirm/refute VISUAL
@@ -269,6 +329,7 @@ class Config:
     #                                     t063 false-done fix (circular self-checks passed
     #                                     + blind verifier -> wrong geometry accepted at 0).
     #                                     False = text-only inspection (the A/B control).
+    # v30/v32：每次 look 的独立读数 N（1 = 单读；>=2 = 见证人组 + 判定员）
     look_ensemble: int = 1              # v30/v32: N independent eyes reads per look.
     #                                     1 = the v22 single-shot path unchanged.
     #                                     >=2 (v32 "two witnesses + judge"): witness 1
@@ -280,18 +341,22 @@ class Config:
     #                                     the v30 vote was forensically inert: 0/12
     #                                     decisive wins, 2 manufactured-wrong merges).
     #                                     Uniform for every look; no classifier.
+    # 见证人 2..N 的温度（见证人 1 恒为 0.0——零温同采样会退化）
     look_ensemble_temp: float = 0.8     # temperature for witnesses 2..N (witness 1
     #                                     stays at 0.0 — identical zero-temp samples
     #                                     would be degenerate).
+    # 已废弃 v32：跨模型投票扩展已移除；字段仅为旧配置兼容而保留（被忽略）
     vision_model_alt: str = ""          # DEPRECATED v32: the v30 cross-model vote
     #                                     extension was removed (voting never resolved
     #                                     a split; code channels did). Field retained
     #                                     so older configs still load; ignored.
+    # v32.5：归档眼睛收到的每张图像到 <run>/eyes/（人类可查模型所见像素）
     archive_eyes: bool = False          # v32.5: save every image the eyes receive
     #                                     under <run>/eyes/NNN_label.{png,jpg} so a
     #                                     human can inspect exactly what the model
     #                                     saw (the alpha-flatten bug hid for 3 runs
     #                                     because nobody could open those pixels).
+    # v33：第二见证人的模型（不同架构去相关错误；"" = 用 vision_model）
     vision_model_2: str = ""            # v33 (): the SECOND witness's model.
     #                                     Two same-model reads share one set of blind
     #                                     spots — agreement can be one wrong opinion
@@ -299,6 +364,7 @@ class Config:
     #                                     different architecture decorrelates the
     #                                     errors at ZERO added cost (same 2 calls).
     #                                     "" = witness 2 uses vision_model (incumbent).
+    # v32.3：发给眼睛图像的长边上限（探针校准：1400 以上可读性不再提升；2560 保形）
     look_max_side: int = 1400           # v32.3: long-side bound for images sent to
     #                                     the eyes. PROBE-CALIBRATED (resprobe): m3's
     #                                     serving stack downsamples internally, so
@@ -309,29 +375,35 @@ class Config:
     #                                     snow filter: hedge at 1400, confident flake
     #                                     ID at 2560). 2560 preserves that at ~2-4x
     #                                     payload. Crops remain the dominant lever.
+    # 一致性判定员的文本模型（"" = 主模型；只见文本、永不判真伪）
     look_merge_model: str = ""          # text model for the agreement JUDGE. "" = the
     #                                     primary model (it sees only the witnesses'
     #                                     TEXT readings — the primary stays blind; it
     #                                     judges same-or-different, never truth).
+    # 精确重复的 Program/Look 块 -> 中性历史证据（默认关，普通/评估配置保持惰性）
     cycle_evidence: bool = False        # Exact recurring Program/Look block -> neutral
     #                                     history evidence. No gate, counter, strategy,
     #                                     temperature change, or stop. Default OFF keeps
     #                                     ordinary/eval configurations inert.
+    # v36(k3fit)：严格轮次纪律（针对只叙述不动作的模型，加系统行 + 叙述感知 nudge）
     action_discipline: bool = False     # v36 (k3fit): STRICT turn discipline — adds
     #                                     one SYSTEM line + a narration-aware nudge for
     #                                     models that describe steps without acting
     #                                     (kimi-k3's 26-nudge stall pattern, t032/t059).
+    # v36：停滞续跑遇到空工作日志时，从被丢弃历史合成一份（避免重新侦察）
     resume_synthesize_worklog: bool = False  # v36 (k3fit): when a stall-resume finds an
     #                                     EMPTY work log (short segment never folded),
     #                                     synthesize one from the discarded history so
     #                                     the fresh attempt doesn't re-recon (t032 s900
     #                                     resume1 re-derived the whole hexo state).
+    # v39.1：检查员的眼睛路由（""=legacy；"self"=主模型服务检查员；或显式模型）
     verifier_vision_model: str = ""     # v39.1 (: FULL MULTIMODAL EVERY RUN):
     #                                     the INSPECTOR's eyes route. "" = legacy
     #                                     (vision_model, i.e. blind when native);
     #                                     "self" = the PRIMARY serves the inspector's
     #                                     looks (native-k3: GLM verifier + k3 eyes =
     #                                     cross-model, sighted); or an explicit model.
+    # 按问题类型路由见证组：数量/空间类全组，描述/识别类单见证（只看语言形态）
     look_witness_router: bool = False   # pre-108 item 4: question-type witness routing.
     #                                     Campaign data: witness-2 disagrees 30-33% on
     #                                     QUANTITATIVE/SPATIAL questions (counting, 3D)
@@ -340,6 +412,7 @@ class Config:
     #                                     questions get the full ensemble; other looks
     #                                     run a single witness. Routing is by the
     #                                     QUESTION's linguistic shape only (general).
+    # v38（K3 官方协议）：把每轮推理重新附回历史中的 assistant 消息（仅主循环）
     reasoning_in_history: bool = False  # v38 (OFFICIAL K3 PROTOCOL): re-attach each
     #                                     turn's reasoning to its assistant message in
     #                                     history ('add the COMPLETE assistant message
@@ -347,16 +420,19 @@ class Config:
     #                                     We violated this all campaign; narration and
     #                                     empty-at-stop are plausible SYMPTOMS. Actor
     #                                     main loop only. False = content-only (legacy).
+    # v37：思考通道 token 上限（reasoning_effort 为空时发送；0 = 省略）
     reasoning_max_tokens: int = 0       # v37 (: max reasoning, accuracy-only):
     #                                     cap for the model's THINKING channel, sent as
     #                                     {"reasoning":{"max_tokens":N}} when
     #                                     reasoning_effort is empty. k3: reasoning is
     #                                     mandatory + depth-tunable (E1 study). 0 = omit.
+    # v36：见证人回复预算（0 = 2000 默认；推理优先的眼睛需要更大余量）
     vision_max_tokens: int = 0          # v36: witness reply budget; 0 = m3-era default
     #                                     (2000). Reasoning-first eyes (kimi-k3) burn
     #                                     ~16k thinking before answering — without the
     #                                     headroom every hard look walks the client's
     #                                     truncation ladder (3 wasted round-trips).
+    # v32.2/v41：PASS+非空 doubts 由同一验证者自决（测试床不机械分类/驳回疑虑）
     doubts_block_pass: bool = False     # v32.2/v41: when enabled, PASS plus non-empty
     #                                     doubts is resolved by the SAME Verifier Agent:
     #                                     task-blocking uncertainty becomes wrong/
@@ -364,6 +440,7 @@ class Config:
     #                                     and PASS returns with empty doubts. The harness
     #                                     never classifies free-form caveats or bounces
     #                                     them mechanically to the Actor Agent.
+    # R3/v32：一次性门——未消解的 SPLIT 读数期间声明 done 驳回一次（成本有界）
     split_done_gate: bool = False       # R3/v32: ONE-SHOT gate — a done declared
     #                                     while some look's readings SPLIT and were
     #                                     never re-read to agreement bounces ONCE with
@@ -373,6 +450,7 @@ class Config:
     #                                     is bounded at one bounce per attempt. Open
     #                                     splits are also handed to the inspector as
     #                                     mechanical context. False = incumbent.
+    # R2/v31：可疑接受决定走升级模型的二次检查（三种触发；默认关 = 现状）
     doubt_escalation: bool = False      # R2/v31: route DOUBTFUL accept decisions
     #                                     through a second inspection on the
     #                                     escalation model. Triggers: (A) the
@@ -386,27 +464,35 @@ class Config:
     #                                     "wrong" from the reviewer blocks acceptance.
     #                                     Requires escalation_model; default OFF = the
     #                                     incumbent (stall-gated escalation only).
+    # R2：每次尝试的二次检查上限（分歧审查不得无限循环）
     doubt_reviews_max: int = 2          # R2: second inspections per attempt (cap — a
     #                                     review disagreement must not loop forever).
+    # v20 Phase-0：verifier 的 pass 至少需要 1 条内容级探针（False = A/B 对照臂）
     verifier_content_guard: bool = True # v20 Phase-0: a verifier 'pass' requires >=1
     #                                     CONTENT-reading probe (not just existence).
     #                                     True = the shipped fix; False = pre-Phase-0
     #                                     behavior (any informative probe cleared it) —
     #                                     the A/B control arm to measure the real effect.
+    # v18：零文件增量停滞 -> 自审 + 分流指令（False = v15 的继续式行为）
     strategy_pivot: bool = True         # v18: zero-file-delta stall -> self-review +
     #                                     diverge directive instead of continuation.
     #                                     False = v15 behavior on every stall (the
     #                                     A/B control arm)
+    # 连续完全相同的（程序, 输出）阈值 -> 停滞（合法等待循环的输出会变化）
     max_consec_repeat: int = 16         # consecutive IDENTICAL (program, output) ->
     #                                     stalled: warnings and temp both proven
     #                                     insufficient at depth (497x observed); legit
     #                                     wait-loops have changing output and never
     #                                     accumulate — fail fast, stall-inspection
     #                                     still verifies whatever was achieved
+    # 超过该轮数比例后，trace 消息要求进入 COMMIT（提交）阶段
     commit_frac: float = 0.75           # past this fraction of iters, trace msgs demand COMMIT
+    # v8：done 时刻的独立新上下文验证（系统级）
     # v8: independent fresh-context verification at done-time (system-level)
     independent_verify: bool = True     # done needs actor checks AND the inspection to pass
+    # 异构验证者模型（"" = 与主模型相同）
     verifier_model: str = ""            # "" = same as model; set for a heterogeneous verifier
+    # R2a 外观门：检查员自己的 look 探针解决不了外观需求时，由测试床机械渲染并注入读数
     verifier_appearance_attach: bool = False  # R2a appearance-gate: when the inspector's OWN
     #                                     round-1 inventory tags [APPEARANCE] requirements and
     #                                     2 probe rounds settle none of them by look, the
@@ -415,7 +501,9 @@ class Config:
     #                                     written reminder was declined on camera — t019/t086
     #                                     postfix; mechanics bind, invitations don't).
     #                                     Capability, not authority: verdict rules unchanged.
+    # 每次检查最多附加的外观图像数（成本上界）
     appearance_attach_max: int = 2      # max images per inspection (cost bound)
+    # P1 目的地绑定：检查简报中的中性 FYI 行 + 绑定指令命名路径的契约句
     verifier_destination_note: bool = False  # P1 destination-binding (07-24): (a) neutral
     #                                     FYI lines in the inspection briefing for files the
     #                                     TASK TEXT names that the run never touched (pure
@@ -429,28 +517,39 @@ class Config:
     #                                     -> 0.0, and every layer bound to the run-touched
     #                                     path. Capability-not-authority; #0-clean (task
     #                                     input + own ledger only).
+    # 实验(xverify)：升级 Actor 等于验证者时回退到原主模型，保持跨模型互查
     escalation_verifier_cross_model: bool = False  # EXP (xverify): if the escalated actor
     #                                     equals the configured verifier (k3-flagship: both
     #                                     GLM), fall the verifier back to the ORIGINAL primary
     #                                     so the escalated segment stays CROSS-model instead of
     #                                     self-reviewing. Default False = current behavior (no-op).
+    # 检查员的探针轮数（4 被证明太紧）
     verifier_probes: int = 6            # probe rounds for the inspector (4 was too tight)
+    # 单探针超时秒数（30 会截断 pptx 类探针）
     verifier_probe_timeout: int = 60    # per-probe seconds (30 truncated pptx-style probes)
+    # 验证者回复 token 预算
     verifier_max_tokens: int = 6000
+    # 第 N 次“无法确认”的检查接受 done（confirmed-wrong 始终驳回）
     unverified_accept: int = 2          # Nth could-not-confirm inspection ACCEPTS the done
     #                                     (confirmed-wrong always bounces; a shallow
     #                                     inspection must not veto deep work forever)
+    # 检查驳回 done 时额外授予的轮数
     inspect_extension: int = 8          # extra turns granted when an inspection bounces a
+    # 检查延长的最多次数（无此上限时晚期 done 变成预算死亡）
     max_inspect_extensions: int = 2     # done — reacting to independent findings needs
     #                                     recon+fix+redeclare; without this, late dones
     #                                     convert into budget-deaths (seeds 9/10 proved it)
+    # 墙钟上限（仅循环本身，不含 VM 启动与评审；用于约束失控而非赛跑）
     wall_clock_secs: int = 7200         # loop only (excludes VM boot + evaluation).
     #                                     Sized for the 100-turn horizon under box-load
     #                                     latency (~30-100s/turn); the cap exists to
     #                                     bound runaways, not to race the scheduler
+    # 程序输出进 Actor 上下文的头/尾裁剪（0/0 = 无损传输；正值=显式旧式上限）
     trace_head: int = 0                 # 0/0 = lossless program-output transport into
+    # （中文）trace_tail：输出尾部的保留字符数（与 trace_head 配对使用）
     trace_tail: int = 0                 # Actor context. Positive values are an explicit
     #                                     opt-in legacy head/tail bound.
+    # 单条文本观测在活上下文中的字符上限（0 = 无损；完整 trace 始终先归档）
     trace_context_max_chars: int = 0    # 0 = lossless. Positive values explicitly cap
     #                                     one textual Program observation in the live
     #                                     model request; repair profiles opt in. The
@@ -460,9 +559,11 @@ class Config:
     #                                     accidental multi-megabyte dump from exceeding
     #                                     the provider window before history compaction
     #                                     has a chance to run.
+    # 摘要模式：每次 summarizer 调用折叠的对数（ctx_high_water=0 时也是计数触发器）
     fold_batch: int = 10                # summary mode: pairs folded per summarizer call
     #                                     (and, when ctx_high_water=0, the legacy count
     #                                     trigger: fold whenever this many accumulate)
+    # v21：WORK LOG 输出上限（旧硬编码 14000 曾盲切 22% 的折叠；按行界截断保留头部）
     worklog_max_chars: int = 40000      # v21 (context): WORK LOG output cap. Was a
     #                                     hardcoded 14000 that BLIND-chopped 22% of folds
     #                                     mid-sentence, silently destroying whole sections
@@ -470,13 +571,16 @@ class Config:
     #                                     0). Raised (fits: 150k verbatim + 40k log < 300k
     #                                     high-water, far under the v14 bloat floor) and
     #                                     truncated at a LINE boundary, keeping the top.
+    # v9.2 评估型折叠触发（字符数）：>0 时仅当渲染上下文超限才折叠；0 = 旧计数触发
     ctx_high_water: int = 0             # v9.2 EVALUATED trigger (chars): >0 = fold only
     #                                     when the rendered context (work log + verbatim
     #                                     tail) exceeds this; 0 = legacy count trigger.
     #                                     A VALUE per config, model-related — size it to
     #                                     the model's usable window; mechanism agnostic.
+    # 折叠低水位（0 = 高水位一半）——迟滞设计，避免逐轮折叠
     ctx_low_water: int = 0              # fold down to this (0 = ctx_high_water // 2) —
     #                                     hysteresis so folding is not per-turn
+    # v14：逐字窗口改为字符预算（保最近可容纳的对话对；0 = 旧固定对数窗口）
     keep_chars: int = 0                 # v14: the verbatim window becomes a CHARACTER
     #                                     budget — keep the most recent pairs that fit
     #                                     (floor 6 pairs, cap history_keep_pairs).
@@ -486,6 +590,7 @@ class Config:
     #                                     the untouchable window ALONE 0.8-1.5M chars,
     #                                     folds could never reach low water, context
     #                                     bloat suppressed capability (t040 evidence)
+    # 0 = 永不压缩历史（默认全量留档）；>0 仅在视界确实超出窗口的配置启用
     history_keep_pairs: int = 0         # 0 = NEVER compact (default: full history — keeps
     #                                     run conditions identical to all pre-v9 data).
     #                                     Set >0 (recent exchanges kept verbatim, older
@@ -493,17 +598,22 @@ class Config:
     #                                     it — e.g. m3_long.yaml's 500 turns, which
     #                                     physically exceed the context window otherwise.
     #                                     Full history always persists to the transcript.
+    # 隔离边界失败回滚重建后，重试完整可信 Verifier 检查的次数
     verifier_infra_retries: int = 0     # Retry complete trusted Verifier inspections
     #                                     after rolling back and rebuilding a failed
     #                                     isolation boundary. Zero preserves fail-fast;
     #                                     repaired benchmark profiles opt in explicitly.
+    # （中文）隔离边界失败回滚重建后重试完整可信 Verifier 检查的次数（0 = 快速失败）
 
 
 def load(path: str = None) -> Config:
+    # 以默认值构造配置
     cfg = Config()
     if path:
+        # 提供了 YAML 覆盖文件则逐键套用（未知键忽略，只覆盖已存在字段）
         import yaml
         for k, v in (yaml.safe_load(open(path)) or {}).items():
             if hasattr(cfg, k):
                 setattr(cfg, k, v)
+    # 返回最终配置对象
     return cfg
